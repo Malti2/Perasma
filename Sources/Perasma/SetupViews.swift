@@ -72,7 +72,7 @@ struct OnboardingView: View {
                 }
             }.font(.body).lineSpacing(4)
             Spacer(minLength: 0)
-            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 3 ? (store.runtimeAvailable ? "Open library" : "Set up later") : "Continue") { if step == 3 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent).disabled(step == 3 && setup.busy) }
+            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 3 ? (store.runtimeAvailable ? "Open library" : "Set up later") : "Continue") { if step == 3 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent).disabled(step == 3 && (setup.busy || setup.mediaBusy)) }
         }.padding(40).frame(width: 720, height: 700)
     }
 }
