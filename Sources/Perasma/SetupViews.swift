@@ -50,7 +50,8 @@ struct OnboardingView: View {
     @EnvironmentObject var store: LibraryStore
     @StateObject private var setup: RuntimeSetup
     @State private var step: Int
-    @MainActor init(initialStep: Int = 0, runtimeSetup: RuntimeSetup? = nil) { _step = State(initialValue: initialStep); _setup = StateObject(wrappedValue: runtimeSetup ?? RuntimeSetup()) }
+    private let showIntegrations: Bool
+    @MainActor init(initialStep: Int = 0, runtimeSetup: RuntimeSetup? = nil, showIntegrations: Bool = false) { self.showIntegrations = showIntegrations; _step = State(initialValue: initialStep); _setup = StateObject(wrappedValue: runtimeSetup ?? RuntimeSetup()) }
     private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours.", "Set up Windows components."]
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
@@ -68,7 +69,10 @@ struct OnboardingView: View {
                     PreferencesControls()
                     Text("Every choice here can be changed later in Settings.").font(.callout).foregroundStyle(.secondary)
                 } else {
-                    ScrollView { RuntimeSetupView(setup: setup) }
+                    ScrollViewReader { proxy in
+                        ScrollView { RuntimeSetupView(setup: setup) }
+                            .onAppear { if showIntegrations { proxy.scrollTo("integrations", anchor: .top) } }
+                    }
                 }
             }.font(.body).lineSpacing(4)
             Spacer(minLength: 0)
