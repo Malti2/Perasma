@@ -14,6 +14,7 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
             self.session = session; session.downloadTask(with: url).resume()
         }
     }
+    func cancel() { session?.invalidateAndCancel() }
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         progress(totalBytesExpectedToWrite > 0 ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) : 0, totalBytesWritten, totalBytesExpectedToWrite)
     }
@@ -42,6 +43,7 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
     @Published var mediaBusy = false
     @Published var mediaPackage: URL?
     @Published var mediaStatus = "Optional: GStreamer adds media playback for some Windows apps. Wine works without it. Its macOS installer is not signed with an Apple certificate, so macOS will ask you to review it yourself before anything is installed."
+    private var activeDownloader: ComponentDownload?
     private let wineURL = URL(string: "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/wine-devel-11.18-osx64.tar.xz")!
     private let wineHash = "aa0ea4c82e636ae7bca2076387cb0a5affa26509ad13f119ecd0d62bd7ba6f82"
     private let mediaURL = URL(string: "https://gstreamer.freedesktop.org/data/pkg/osx/1.28.5/gstreamer-1.0-1.28.5-universal.pkg")!
@@ -101,6 +103,24 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
         NSWorkspace.shared.open(package)
         mediaStatus = "macOS Installer is open with the verified download. Review the package there; installing it is your choice. Perasma does not bypass the macOS check."
     }
+    // CI captures real transfer callbacks without installing or opening any component.
+    func startCaptureDownload(media: Bool, root: URL) {
+        guard CommandLine.arguments.contains("--capture-downloads"), !busy, !mediaBusy else { return }
+        progress = 0; transferred = 0; total = 0
+        busy = !media; mediaBusy = media
+        component = "1 of 3 · Wine, Mono and Gecko"
+        status = "Downloading from the WineHQ macOS package maintainer."
+        if media { mediaStatus = "Downloading GStreamer from the GStreamer project. Nothing is installed yet." }
+        Task {
+            do { _ = try await download(media ? mediaURL : wineURL, expected: media ? mediaHash : wineHash, root: root, base: 0, weight: 1) }
+            catch { if media { mediaStatus = error.localizedDescription } else { status = error.localizedDescription } }
+            busy = false; mediaBusy = false
+        }
+    }
+    func stopCaptureDownload() {
+        guard CommandLine.arguments.contains("--capture-downloads") else { return }
+        activeDownloader?.cancel()
+    }
     private func download(_ url: URL, expected: String, root: URL, base: Double, weight: Double) async throws -> URL {
         let directory = root.appendingPathComponent("Downloads", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -109,6 +129,8 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
         let downloader = ComponentDownload { [weak self] fraction, received, total in
             Task { @MainActor in self?.progress = base + fraction * weight; self?.transferred = received; self?.total = total }
         }
+        activeDownloader = downloader
+        defer { activeDownloader = nil }
         let temporary = try await downloader.start(url)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard try await hash(temporary) == expected else { throw setupError("Checksum mismatch. Download rejected.") }
