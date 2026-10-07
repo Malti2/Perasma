@@ -22,10 +22,14 @@ import PerasmaCore
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             do { try capture(library, to: destination.appendingPathComponent("library.png")) } catch { print(error); exit(1) }
             library.orderOut(nil)
-            let setup = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 520), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let setup = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 700), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             setup.title = "Welcome to Perasma"; setup.contentView = NSHostingView(rootView: OnboardingView().environmentObject(store)); setup.center(); setup.makeKeyAndOrderFront(nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                do { try capture(setup, to: destination.appendingPathComponent("onboarding.png")); try? FileManager.default.removeItem(at: root); print("PERASMA_UI_CAPTURE_SUCCEEDED"); exit(0) } catch { print(error); exit(1) }
+                do { try capture(setup, to: destination.appendingPathComponent("onboarding.png")) } catch { print(error); exit(1) }
+                setup.contentView = NSHostingView(rootView: OnboardingView(initialStep: 2).environmentObject(store))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    do { try capture(setup, to: destination.appendingPathComponent("setup.png")); try? FileManager.default.removeItem(at: root); print("PERASMA_UI_CAPTURE_SUCCEEDED"); exit(0) } catch { print(error); exit(1) }
+                }
             }
         }
     }

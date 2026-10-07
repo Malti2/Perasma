@@ -22,7 +22,7 @@ struct ImportView: View {
                 }
             }
             Text("Use an existing environment for an installer or program belonging to an app you already added. Environments separate Windows settings, not security permissions.").font(.callout).foregroundStyle(.secondary)
-            HStack { Button("Cancel") { store.importURL = nil }; Spacer(); Button("Add app") { store.add(url: url, name: name.trimmingCharacters(in: .whitespacesAndNewlines), category: category, environmentID: environmentID) }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+            HStack { Button("Cancel") { store.importURL = nil }; Spacer(); Button("Add app") { store.add(url: url, name: name.trimmingCharacters(in: .whitespacesAndNewlines), category: category, environmentID: environmentID) }.buttonStyle(.glassProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
         }.padding(32).frame(width: 520).onAppear { name = url.deletingPathExtension().lastPathComponent }
     }
 }
@@ -39,19 +39,21 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Library and safety") { PreferencesControls() }
-            Section("Wine runtime") {
+            Section("Download and setup") { RuntimeSetupView() }
+            Section("Existing Wine runtime") {
                 Text(store.preferences.runtimePath.isEmpty ? "No runtime configured" : store.preferences.runtimePath).font(.caption).textSelection(.enabled)
                 Button("Choose Wine executable...") { store.chooseRuntime() }
                 Text("No runtime is bundled. Compatibility and graphics support depend on the chosen engine. Apple D3DMetal is not included.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Finder") { Text("Use Finder's Open With menu to select Perasma for .exe and .msi files. Change the default in Get Info only if you want to. Perasma never silently changes your associations.").font(.callout) }
             Section("Onboarding") { Button("Show onboarding again") { store.preferences.onboardingComplete = false; store.save() } }
-        }.formStyle(.grouped).padding().frame(width: 600, height: 510).onChange(of: store.preferences) { _, _ in store.save() }
+        }.formStyle(.grouped).padding().frame(width: 760, height: 730).onChange(of: store.preferences) { _, _ in store.save() }
     }
 }
 struct OnboardingView: View {
     @EnvironmentObject var store: LibraryStore
-    @State private var step = 0
+    @State private var step: Int
+    init(initialStep: Int = 0) { _step = State(initialValue: initialStep) }
     private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours."]
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
@@ -61,19 +63,20 @@ struct OnboardingView: View {
             Group {
                 if step == 0 {
                     Text("Keep Windows programs and games in one native library. Open .exe files from Finder, keep environments organized, and start apps without Terminal.")
-                    Text("A compatible Wine runtime is required. This early build does not include one, and not every Windows app will work.").foregroundStyle(.secondary)
+                    Text("A compatible Wine runtime is required. Download it from its publisher during setup. Not every Windows app will work.").foregroundStyle(.secondary)
                 } else if step == 1 {
                     Text("Your library, preferences and launch logs stay in Application Support on this Mac. Perasma has no analytics or cloud library.")
                     Text("Windows apps themselves can connect to the internet and access files available to your Mac account. Wine environments are not security sandboxes. Only run software you trust.").foregroundStyle(.secondary)
                 } else {
-                    Form { PreferencesControls() }
+                    PreferencesControls()
+                    ScrollView { RuntimeSetupView() }.frame(maxHeight: 270)
                     Button("Choose existing Wine runtime...") { store.chooseRuntime() }
                     Text(store.runtimeAvailable ? "Executable selected. App compatibility is still unverified." : "You can set up the runtime later in Settings.").font(.caption).foregroundStyle(.secondary)
                     Text("Every choice here can be changed later in Settings.").font(.callout).foregroundStyle(.secondary)
                 }
             }.font(.body).lineSpacing(4)
             Spacer(minLength: 0)
-            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 2 ? "Open library" : "Continue") { if step == 2 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.borderedProminent) }
-        }.padding(40).frame(width: 640, height: 520)
+            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 2 ? "Open library" : "Continue") { if step == 2 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent) }
+        }.padding(40).frame(width: 720, height: 700)
     }
 }
