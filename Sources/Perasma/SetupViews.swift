@@ -54,11 +54,11 @@ struct OnboardingView: View {
     @EnvironmentObject var store: LibraryStore
     @State private var step: Int
     init(initialStep: Int = 0) { _step = State(initialValue: initialStep) }
-    private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours."]
+    private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours.", "Set up Windows components."]
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
-            HStack { Text("Perasma").font(.headline); Spacer(); Text("\(step + 1) of 3").font(.caption).foregroundStyle(.secondary) }
-            Image(systemName: step == 0 ? "macwindow" : step == 1 ? "lock.shield" : "slider.horizontal.3").font(.system(size: 44, weight: .light)).foregroundStyle(.tint).accessibilityHidden(true)
+            HStack { Text("Perasma").font(.headline); Spacer(); Text("\(step + 1) of 4").font(.caption).foregroundStyle(.secondary) }
+            Image(systemName: step == 0 ? "macwindow" : step == 1 ? "lock.shield" : step == 2 ? "slider.horizontal.3" : "arrow.down.circle").font(.system(size: 44, weight: .light)).foregroundStyle(.tint).accessibilityHidden(true)
             Text(titles[step]).font(.system(size: 31, weight: .bold)).fixedSize(horizontal: false, vertical: true)
             Group {
                 if step == 0 {
@@ -67,16 +67,15 @@ struct OnboardingView: View {
                 } else if step == 1 {
                     Text("Your library, preferences and launch logs stay in Application Support on this Mac. Perasma has no analytics or cloud library.")
                     Text("Windows apps themselves can connect to the internet and access files available to your Mac account. Wine environments are not security sandboxes. Only run software you trust.").foregroundStyle(.secondary)
-                } else {
+                } else if step == 2 {
                     PreferencesControls()
-                    ScrollView { RuntimeSetupView() }.frame(maxHeight: 270)
-                    Button("Choose existing Wine runtime...") { store.chooseRuntime() }
-                    Text(store.runtimeAvailable ? "Executable selected. App compatibility is still unverified." : "You can set up the runtime later in Settings.").font(.caption).foregroundStyle(.secondary)
                     Text("Every choice here can be changed later in Settings.").font(.callout).foregroundStyle(.secondary)
+                } else {
+                    ScrollView { RuntimeSetupView() }
                 }
             }.font(.body).lineSpacing(4)
             Spacer(minLength: 0)
-            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 2 ? "Open library" : "Continue") { if step == 2 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent) }
+            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 3 ? (store.runtimeAvailable ? "Open library" : "Set up later") : "Continue") { if step == 3 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent) }
         }.padding(40).frame(width: 720, height: 700)
     }
 }

@@ -28,7 +28,7 @@ import PerasmaCore
             setup.title = "Welcome to Perasma"; setup.contentView = NSHostingView(rootView: OnboardingView().environmentObject(store)); setup.center(); setup.makeKeyAndOrderFront(nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 do { try capture(setup, to: destination.appendingPathComponent("onboarding.png")) } catch { print(error); exit(1) }
-                setup.contentView = NSHostingView(rootView: OnboardingView(initialStep: 2).environmentObject(store))
+                setup.contentView = NSHostingView(rootView: OnboardingView(initialStep: 3).environmentObject(store))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     do { try capture(setup, to: destination.appendingPathComponent("setup.png")); try? FileManager.default.removeItem(at: root); print("PERASMA_UI_CAPTURE_SUCCEEDED"); exit(0) } catch { print(error); exit(1) }
                 }
