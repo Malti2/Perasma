@@ -64,7 +64,10 @@ import PerasmaCore
             let handle = try FileHandle(forWritingTo: logURL); try handle.truncate(atOffset: 0)
             let process = Process(); process.executableURL = URL(fileURLWithPath: preferences.runtimePath); process.arguments = LaunchPlan.arguments(for: url)
             process.currentDirectoryURL = url.deletingLastPathComponent()
-            var env = ProcessInfo.processInfo.environment; env["WINEPREFIX"] = prefix.path; process.environment = env
+            var env = ProcessInfo.processInfo.environment; env["WINEPREFIX"] = prefix.path
+            let graphics = library.environments.first { $0.id == app.environmentID }?.graphics
+            if let overrides = ComponentPolicy.overrides(graphics: graphics) { env["WINEDLLOVERRIDES"] = overrides }
+            process.environment = env
             process.standardOutput = handle; process.standardError = handle
             process.terminationHandler = { [weak self] child in
                 try? handle.close()
