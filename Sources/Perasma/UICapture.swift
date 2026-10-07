@@ -32,8 +32,12 @@ import PerasmaCore
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     do {
                         try capture(setup, to: destination.appendingPathComponent("setup.png"))
-                        if CommandLine.arguments.contains("--capture-downloads") { captureDownloads(window: setup, store: store, destination: destination, media: false) }
-                        else { finish(root: root) }
+                        setup.contentView = NSHostingView(rootView: OnboardingView(initialStep: 3, showIntegrations: true).environmentObject(store))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            do { try capture(setup, to: destination.appendingPathComponent("integrations.png")) } catch { print(error); exit(1) }
+                            if CommandLine.arguments.contains("--capture-downloads") { captureDownloads(window: setup, store: store, destination: destination, media: false) }
+                            else { finish(root: root) }
+                        }
                     } catch { print(error); exit(1) }
                 }
             }
