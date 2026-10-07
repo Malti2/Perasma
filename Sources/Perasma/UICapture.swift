@@ -30,10 +30,40 @@ import PerasmaCore
                 do { try capture(setup, to: destination.appendingPathComponent("onboarding.png")) } catch { print(error); exit(1) }
                 setup.contentView = NSHostingView(rootView: OnboardingView(initialStep: 3).environmentObject(store))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    do { try capture(setup, to: destination.appendingPathComponent("setup.png")); try? FileManager.default.removeItem(at: root); print("PERASMA_UI_CAPTURE_SUCCEEDED"); exit(0) } catch { print(error); exit(1) }
+                    do {
+                        try capture(setup, to: destination.appendingPathComponent("setup.png"))
+                        if CommandLine.arguments.contains("--capture-downloads") { captureDownloads(window: setup, store: store, destination: destination, media: false) }
+                        else { finish(root: root) }
+                    } catch { print(error); exit(1) }
                 }
             }
         }
+    }
+    private static func finish(root: URL) {
+        try? FileManager.default.removeItem(at: root)
+        print("PERASMA_UI_CAPTURE_SUCCEEDED"); exit(0)
+    }
+    private static func captureDownloads(window: NSWindow, store: LibraryStore, destination: URL, media: Bool) {
+        let runtime = RuntimeSetup()
+        window.contentView = NSHostingView(rootView: OnboardingView(initialStep: 3, runtimeSetup: runtime).environmentObject(store))
+        runtime.startCaptureDownload(media: media, root: store.root)
+        func waitForBytes(attempt: Int) {
+            guard attempt < 100 else { runtime.stopCaptureDownload(); print("Real publisher download did not start"); exit(1) }
+            if runtime.transferred > 0 && (runtime.busy || runtime.mediaBusy) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    do {
+                        try capture(window, to: destination.appendingPathComponent(media ? "media-download.png" : "wine-download.png"))
+                        print("PERASMA_REAL_DOWNLOAD_CAPTURE bytes=\(runtime.transferred) total=\(runtime.total) media=\(media)")
+                        runtime.stopCaptureDownload()
+                        if media { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { finish(root: store.root) } }
+                        else { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { captureDownloads(window: window, store: store, destination: destination, media: true) } }
+                    } catch { print(error); exit(1) }
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { waitForBytes(attempt: attempt + 1) }
+            }
+        }
+        waitForBytes(attempt: 0)
     }
     private static func capture(_ window: NSWindow, to url: URL) throws {
         NSApp.activate(ignoringOtherApps: true)
