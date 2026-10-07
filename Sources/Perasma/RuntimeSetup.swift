@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import CryptoKit
+import PerasmaCore
 
 private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     let progress: @Sendable (Double, Int64, Int64) -> Void
@@ -43,6 +44,13 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
     @Published var mediaBusy = false
     @Published var mediaPackage: URL?
     @Published var mediaStatus = "Optional: GStreamer adds media playback for some Windows apps. Wine works without it. Its macOS installer is not signed with an Apple certificate, so macOS will ask you to review it yourself before anything is installed."
+    @Published var graphicsStatus = "Experimental D3D10/11 via DXVK-macOS (non-async). No D3D9/12 support or M1 compatibility claim. Uses a separate environment; existing apps are unchanged."
+    @Published var steamStatus = "Download the current Windows installer from Valve and add it to your library. Installation and login remain yours to review. Steam rendering is not verified on M1."
+    @Published var graphicsEnvironmentID: UUID?
+    private let graphicsURL = URL(string: "https://github.com/Gcenx/DXVK-macOS/releases/download/v1.10.3/dxvk-v1.10.3.tar.gz")!
+    private let graphicsHash = "5644f5c02e8dc3e25171e6b7b5d16e927332b32136c6caf8e418e1192cc2e5d4"
+    private let steamURL = URL(string: "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe")!
+    private let steamHash = "7d3654531c32d941b8cae81c4137fc542172bfa9635f169cb392f245a0a12bcb"
     private var activeDownloader: ComponentDownload?
     private let wineURL = URL(string: "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/wine-devel-11.18-osx64.tar.xz")!
     private let wineHash = "aa0ea4c82e636ae7bca2076387cb0a5affa26509ad13f119ecd0d62bd7ba6f82"
@@ -79,7 +87,7 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
                 guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS did not approve the package. Review it in Finder and macOS Privacy & Security, then continue setup. Perasma will not remove quarantine or bypass Gatekeeper.") }
                 store.preferences.runtimePath = executable.path; store.save(); progress = 1
                 component = "Core setup complete"
-                status = "Wine, Mono and Gecko are ready. App compatibility still needs testing. Extra game graphics, media playback and Steam setup are not integrated yet."
+                status = "Wine, Mono and Gecko are ready. App compatibility still needs testing. Media still needs your installer review. Experimental graphics and Steam installer preparation are available below; game compatibility is not verified."
             } catch { status = error.localizedDescription }
             busy = false
         }
@@ -102,6 +110,80 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
         guard let package = mediaPackage else { return }
         NSWorkspace.shared.open(package)
         mediaStatus = "macOS Installer is open with the verified download. Review the package there; installing it is your choice. Perasma does not bypass the macOS check."
+    }
+    func prepareGraphics(store: LibraryStore) {
+        guard !busy, !mediaBusy, store.runtimeAvailable else { return }
+        busy = true; component = "Experimental graphics · download"; progress = 0; transferred = 0; total = 0
+        Task {
+            var newPrefix: URL?
+            do {
+                status = "Downloading non-async DXVK-macOS from its maintainer."
+                let archive = try await download(graphicsURL, expected: graphicsHash, root: store.root, base: 0, weight: 0.7)
+                component = "Experimental graphics · prepare"
+                let listing = try await command("/usr/bin/tar", ["-tf", archive.path])
+                guard listing.code == 0, !listing.output.isEmpty,
+                      listing.output.split(separator: "\n").allSatisfy({ ComponentPolicy.safeArchiveEntry(String($0), root: "dxvk-v1.10.3") }) else { throw setupError("Unexpected graphics archive paths. Nothing was applied.") }
+                let types = try await command("/usr/bin/tar", ["-tvf", archive.path])
+                guard types.code == 0, types.output.split(separator: "\n").allSatisfy({ $0.first == "-" || $0.first == "d" }) else { throw setupError("Graphics archive contains links or special files. Nothing was applied.") }
+                let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+                defer { try? FileManager.default.removeItem(at: scratch) }
+                let unpack = try await command("/usr/bin/tar", ["-xf", archive.path, "-C", scratch.path])
+                guard unpack.code == 0 else { throw setupError("Graphics extraction failed.") }
+                let environment = WindowsEnvironment(name: "Experimental D3D10/11", graphics: .dxvk)
+                let prefix = LaunchPlan.prefix(root: store.root, id: environment.id); newPrefix = prefix
+                try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+                let initialization = try await wineCommand(store: store, prefix: prefix, arguments: ["wineboot", "-u"])
+                guard initialization.code == 0 else { throw setupError("Wine could not prepare the test environment. Existing apps were not changed.") }
+                for (source, target) in [("x64", "system32"), ("x32", "syswow64")] {
+                    let directory = prefix.appendingPathComponent("drive_c/windows/" + target)
+                    guard FileManager.default.fileExists(atPath: directory.path) else { throw setupError("The runtime did not create a WoW64 environment. Graphics were not enabled.") }
+                    for name in ComponentPolicy.graphicsDLLs {
+                        let dll = scratch.appendingPathComponent("dxvk-v1.10.3/" + source + "/" + name)
+                        let values = try dll.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                        guard values.isRegularFile == true, values.isSymbolicLink != true else { throw setupError("Unexpected graphics file type.") }
+                        let destination = directory.appendingPathComponent(name)
+                        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+                        try FileManager.default.copyItem(at: dll, to: destination)
+                        let metadata = try await command("/usr/bin/xattr", ["-w", "com.apple.quarantine", "0081;00000000;Perasma;", destination.path])
+                        guard metadata.code == 0 else { throw setupError("Graphics security metadata could not be set. Setup stopped.") }
+                    }
+                }
+                store.library.environments.append(environment); store.save(); graphicsEnvironmentID = environment.id
+                newPrefix = nil; progress = 1
+                graphicsStatus = "Separate experimental environment prepared. Only d3d10core and d3d11 are overridden. Import a trusted app into Experimental D3D10/11 to test it. No M1 game run has been verified."
+                status = "Experimental graphics preparation complete, not a compatibility test."
+            } catch {
+                if let newPrefix { try? FileManager.default.removeItem(at: newPrefix) }
+                graphicsStatus = error.localizedDescription; status = "Graphics preparation stopped."
+            }
+            busy = false
+        }
+    }
+    func prepareSteam(store: LibraryStore) {
+        guard !busy, !mediaBusy, store.runtimeAvailable else { return }
+        busy = true; component = "Steam installer · download"; progress = 0; transferred = 0; total = 0
+        Task {
+            do {
+                status = "Downloading the current Windows installer from Valve. Nothing is run automatically."
+                let installer = try await download(steamURL, expected: steamHash, root: store.root, base: 0, weight: 1)
+                if let existing = store.library.apps.first(where: { $0.path == installer.path }) { store.selectedID = existing.id }
+                else { store.add(url: installer, name: "Steam installer", category: .games, environmentID: graphicsEnvironmentID) }
+                steamStatus = "Verified download added to the library. Open Steam installer there to review and install. After installation, add Steam.exe using the same environment. No helper replacement, old client, or update freeze is applied. Rendering and login need an M1 test."
+                status = "Steam installer prepared. Steam itself is not installed or verified."
+            } catch { steamStatus = error.localizedDescription; status = "Steam preparation stopped. A changed publisher file is rejected until reviewed." }
+            busy = false
+        }
+    }
+    private func wineCommand(store: LibraryStore, prefix: URL, arguments: [String]) async throws -> (code: Int32, output: String) {
+        let executable = store.preferences.runtimePath
+        return try await Task.detached(priority: .utility) {
+            let process = Process(); process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
+            var environment = ProcessInfo.processInfo.environment; environment["WINEPREFIX"] = prefix.path; process.environment = environment
+            let pipe = Pipe(); process.standardOutput = pipe; process.standardError = pipe
+            try process.run(); let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
+            return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+        }.value
     }
     // CI captures real transfer callbacks without installing or opening any component.
     func startCaptureDownload(media: Bool, root: URL) {
@@ -186,7 +268,17 @@ struct RuntimeSetupView: View {
             }
             Button(setup.mediaPackage == nil ? "Download media support" : "Review and open installer") { if setup.mediaPackage == nil { setup.setUpMedia(store: store) } else { setup.openMediaInstaller() } }.disabled(setup.busy || setup.mediaBusy)
             Text(setup.mediaStatus).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-            Text("Downloads are checked against pinned publisher SHA-256 values. Gatekeeper is never bypassed. Extra graphics layers and Steam automation are still being developed; this is core setup, not support for every game.").font(.caption).foregroundStyle(.secondary)
+            Text("Downloads use pinned SHA-256 values. Wine and GStreamer values come from publisher checksums; DXVK and Steam pins were measured from their HTTPS publisher downloads. Gatekeeper is never bypassed. DXMT, D3D12 and automatic Steam setup are not ready. This is not support for every game.").font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Text("Experimental graphics").font(.subheadline).id("integrations")
+            Button("Prepare separate D3D10/11 environment") { setup.prepareGraphics(store: store) }.disabled(setup.busy || setup.mediaBusy || !store.runtimeAvailable)
+            Text(setup.graphicsStatus).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Link("DXVK-macOS source & limitations", destination: URL(string: "https://github.com/Gcenx/DXVK-macOS/releases/tag/v1.10.3")!).font(.caption)
+            Divider()
+            Text("Steam preparation").font(.subheadline)
+            Button("Download and add Steam installer") { setup.prepareSteam(store: store) }.disabled(setup.busy || setup.mediaBusy || !store.runtimeAvailable)
+            Text(setup.steamStatus).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Link("Valve Steam download", destination: URL(string: "https://store.steampowered.com/about/")!).font(.caption)
             HStack {
                 Link("Wine source & license", destination: URL(string: "https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18")!)
                 Link("GStreamer source", destination: URL(string: "https://gstreamer.freedesktop.org/download/")!)
