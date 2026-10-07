@@ -48,9 +48,9 @@ struct SettingsView: View {
 }
 struct OnboardingView: View {
     @EnvironmentObject var store: LibraryStore
-    @StateObject private var setup = RuntimeSetup()
+    @StateObject private var setup: RuntimeSetup
     @State private var step: Int
-    init(initialStep: Int = 0) { _step = State(initialValue: initialStep) }
+    @MainActor init(initialStep: Int = 0, runtimeSetup: RuntimeSetup? = nil) { _step = State(initialValue: initialStep); _setup = StateObject(wrappedValue: runtimeSetup ?? RuntimeSetup()) }
     private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours.", "Set up Windows components."]
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
