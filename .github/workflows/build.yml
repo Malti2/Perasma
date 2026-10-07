@@ -1,0 +1,46 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test core
+        run: swift test --filter PerasmaCoreTests
+      - name: Build native app
+        run: |
+          swift build -c release
+          mkdir -p dist/Perasma.app/Contents/MacOS
+          cp .build/release/Perasma dist/Perasma.app/Contents/MacOS/Perasma
+          cp Info.plist dist/Perasma.app/Contents/Info.plist
+          codesign --force --sign - dist/Perasma.app
+          ditto -c -k --sequesterRsrc --keepParent dist/Perasma.app dist/Perasma-0.1.0-macos.zip
+      - name: Capture native interface
+        run: |
+          mkdir -p ui-capture
+          dist/Perasma.app/Contents/MacOS/Perasma --capture-ui "$PWD/ui-capture" > capture.log 2>&1 &
+          PID=$!
+          for ATTEMPT in $(seq 1 30); do
+            kill -0 "$PID" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$PID" 2>/dev/null; then kill "$PID"; cat capture.log; exit 1; fi
+          wait "$PID"
+          cat capture.log
+          grep -q PERASMA_UI_CAPTURE_SUCCEEDED capture.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Perasma-native-screenshots
+          path: ui-capture/*.png
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Perasma-app
+          path: dist/Perasma-0.1.0-macos.zip
+          retention-days: 1
