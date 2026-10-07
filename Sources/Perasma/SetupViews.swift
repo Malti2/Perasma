@@ -36,15 +36,11 @@ struct PreferencesControls: View {
 }
 struct SettingsView: View {
     @EnvironmentObject var store: LibraryStore
+    @StateObject private var setup = RuntimeSetup()
     var body: some View {
         Form {
             Section("Library and safety") { PreferencesControls() }
-            Section("Download and setup") { RuntimeSetupView() }
-            Section("Existing Wine runtime") {
-                Text(store.preferences.runtimePath.isEmpty ? "No runtime configured" : store.preferences.runtimePath).font(.caption).textSelection(.enabled)
-                Button("Choose Wine executable...") { store.chooseRuntime() }
-                Text("No runtime is bundled. Compatibility and graphics support depend on the chosen engine. Apple D3DMetal is not included.").font(.caption).foregroundStyle(.secondary)
-            }
+            Section("Download and setup") { RuntimeSetupView(setup: setup) }
             Section("Finder") { Text("Use Finder's Open With menu to select Perasma for .exe and .msi files. Change the default in Get Info only if you want to. Perasma never silently changes your associations.").font(.callout) }
             Section("Onboarding") { Button("Show onboarding again") { store.preferences.onboardingComplete = false; store.save() } }
         }.formStyle(.grouped).padding().frame(width: 760, height: 730).onChange(of: store.preferences) { _, _ in store.save() }
@@ -52,6 +48,7 @@ struct SettingsView: View {
 }
 struct OnboardingView: View {
     @EnvironmentObject var store: LibraryStore
+    @StateObject private var setup = RuntimeSetup()
     @State private var step: Int
     init(initialStep: Int = 0) { _step = State(initialValue: initialStep) }
     private let titles = ["Windows software. At home on Mac.", "Local by default. Honest about limits.", "Make Perasma yours.", "Set up Windows components."]
@@ -71,11 +68,11 @@ struct OnboardingView: View {
                     PreferencesControls()
                     Text("Every choice here can be changed later in Settings.").font(.callout).foregroundStyle(.secondary)
                 } else {
-                    ScrollView { RuntimeSetupView() }
+                    ScrollView { RuntimeSetupView(setup: setup) }
                 }
             }.font(.body).lineSpacing(4)
             Spacer(minLength: 0)
-            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 3 ? (store.runtimeAvailable ? "Open library" : "Set up later") : "Continue") { if step == 3 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent) }
+            HStack { if step > 0 { Button("Back") { withAnimation { step -= 1 } } }; Spacer(); Button(step == 3 ? (store.runtimeAvailable ? "Open library" : "Set up later") : "Continue") { if step == 3 { store.preferences.onboardingComplete = true; store.save() } else { withAnimation { step += 1 } } }.buttonStyle(.glassProminent).disabled(step == 3 && setup.busy) }
         }.padding(40).frame(width: 720, height: 700)
     }
 }

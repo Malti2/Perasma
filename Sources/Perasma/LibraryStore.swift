@@ -46,7 +46,7 @@ import PerasmaCore
         library.apps.append(app); selectedID = app.id; importURL = nil; save()
     }
     func requestLaunch(_ app: WindowsApp) {
-        guard runtimeAvailable else { error = "A compatible Wine runtime is not configured. Choose an existing runtime in Settings. No runtime is bundled in this build."; return }
+        guard runtimeAvailable else { error = "The Wine runtime is not set up yet. Download it under Download and setup in Settings. No runtime is bundled in this build."; return }
         if preferences.confirmLaunch { pendingLaunch = app } else { launch(app) }
     }
     func launch(_ app: WindowsApp) {
@@ -77,7 +77,6 @@ import PerasmaCore
             if let i = library.apps.firstIndex(where: { $0.id == app.id }) { library.apps[i].lastOpened = Date(); save() }
         } catch { self.error = "The app could not start: \(error.localizedDescription)" }
     }
-    func chooseRuntime() { let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.message = "Choose an existing Wine executable. It must support your macOS version and Windows apps."; if panel.runModal() == .OK, let url = panel.url { guard FileManager.default.isExecutableFile(atPath: url.path) else { error = "This file is not executable."; return }; preferences.runtimePath = url.path; save() } }
     func chooseIcon(for app: WindowsApp) { let panel = NSOpenPanel(); panel.message = "Choose this app's genuine icon image."; if panel.runModal() == .OK, let url = panel.url, NSImage(contentsOf: url) != nil, let i = library.apps.firstIndex(where: { $0.id == app.id }) { library.apps[i].iconPath = url.path; save() } }
     func remove(_ app: WindowsApp) { library.apps.removeAll { $0.id == app.id }; if selectedID == app.id { selectedID = nil }; save() }
     func revealEnvironment(_ app: WindowsApp) { let url = LaunchPlan.prefix(root: root, id: app.environmentID); do { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true); NSWorkspace.shared.open(url) } catch { self.error = error.localizedDescription } }

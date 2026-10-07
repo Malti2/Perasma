@@ -33,27 +33,27 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
 
 @MainActor final class RuntimeSetup: ObservableObject {
     @Published var busy = false
-    @Published var status = "One setup flow for Wine, Mono, Gecko and the required media runtime."
+    @Published var status = "One setup flow for Wine with Mono and Gecko."
     @Published var component = "Ready to download"
     @Published var progress = 0.0
     @Published var transferred: Int64 = 0
     @Published var total: Int64 = 0
     @Published var downloadedWine: URL?
+    @Published var mediaBusy = false
+    @Published var mediaPackage: URL?
+    @Published var mediaStatus = "Optional: GStreamer adds media playback for some Windows apps. Wine works without it. Its macOS installer is not signed with an Apple certificate, so macOS will ask you to review it yourself before anything is installed."
     private let wineURL = URL(string: "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/wine-devel-11.18-osx64.tar.xz")!
     private let wineHash = "aa0ea4c82e636ae7bca2076387cb0a5affa26509ad13f119ecd0d62bd7ba6f82"
     private let mediaURL = URL(string: "https://gstreamer.freedesktop.org/data/pkg/osx/1.28.5/gstreamer-1.0-1.28.5-universal.pkg")!
     private let mediaHash = "0a8fc7a1cf8d7bac833ca0ebe2fd196a199c2465e810cd5b1e4b4f720c258f43"
+    var mediaInstalled: Bool { FileManager.default.fileExists(atPath: "/Library/Frameworks/GStreamer.framework") }
     func setUpAll(store: LibraryStore) {
-        guard !busy else { return }; busy = true
+        guard !busy, !mediaBusy else { return }; busy = true
         Task {
             do {
-                component = "1 of 4 · Wine, Mono and Gecko"; status = "Downloading from the WineHQ macOS package maintainer."
-                let archive = try await download(wineURL, expected: wineHash, root: store.root, base: 0, weight: 0.50)
-                component = "2 of 4 · GStreamer"; status = "Downloading the required media runtime from the GStreamer project."
-                let package = try await download(mediaURL, expected: mediaHash, root: store.root, base: 0.50, weight: 0.35)
-                component = "3 of 4 · Verify and prepare"; status = "Checking package signatures and archive paths."
-                let signature = try await command("/usr/sbin/pkgutil", ["--check-signature", package.path])
-                guard signature.code == 0 else { throw setupError("GStreamer checksum matched, but macOS could not verify its installer signature. Setup stopped.") }
+                component = "1 of 3 · Wine, Mono and Gecko"; status = "Downloading from the WineHQ macOS package maintainer."
+                let archive = try await download(wineURL, expected: wineHash, root: store.root, base: 0, weight: 0.75)
+                component = "2 of 3 · Verify and prepare"; status = "Checking archive paths."
                 let destination = store.root.appendingPathComponent("Runtimes/Wine-11.18", isDirectory: true)
                 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
                 let bundle = destination.appendingPathComponent("Wine Devel.app")
@@ -65,12 +65,8 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
                     let metadata = try await command("/usr/bin/xattr", ["-w", "com.apple.quarantine", "0081;00000000;Perasma;", bundle.path])
                     guard metadata.code == 0 else { throw setupError("Runtime security metadata could not be set. Setup stopped.") }
                 }
-                downloadedWine = bundle; progress = 0.9
-                component = "4 of 4 · macOS approval"; status = "Checking system requirements."
-                guard FileManager.default.fileExists(atPath: "/Library/Frameworks/GStreamer.framework") else {
-                    NSWorkspace.shared.open(package)
-                    throw setupError("Both downloads are verified. macOS Installer is open: review the GStreamer license and install for all users. Then choose Continue setup here. Your downloaded files are kept; they will not be downloaded again.")
-                }
+                downloadedWine = bundle; progress = 0.85
+                component = "3 of 3 · macOS approval"; status = "Checking system requirements."
                 #if arch(arm64)
                 let rosetta = try await command("/usr/bin/arch", ["-x86_64", "/usr/bin/true"])
                 guard rosetta.code == 0 else { throw setupError("This Wine package needs Rosetta. Open the downloaded Wine app to use Apple's macOS installation prompt, then continue setup. Perasma does not accept Apple's license for you.") }
@@ -78,13 +74,32 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
                 let executable = bundle.appendingPathComponent("Contents/Resources/wine/bin/wine")
                 guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw setupError("The Wine executable is missing.") }
                 let assessment = try await command("/usr/sbin/spctl", ["--assess", "--type", "execute", bundle.path])
-                guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS did not approve the package. Review it in Finder and macOS Privacy & Security, then continue setup. Perasma will not remove quarantine or bypass Gatekeeper. You can also choose an already approved runtime in Settings.") }
+                guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS did not approve the package. Review it in Finder and macOS Privacy & Security, then continue setup. Perasma will not remove quarantine or bypass Gatekeeper.") }
                 store.preferences.runtimePath = executable.path; store.save(); progress = 1
                 component = "Core setup complete"
-                status = "Wine, Mono, Gecko and GStreamer are ready. App compatibility still needs testing. Extra game graphics and Steam setup are not integrated yet."
+                status = "Wine, Mono and Gecko are ready. App compatibility still needs testing. Extra game graphics, media playback and Steam setup are not integrated yet."
             } catch { status = error.localizedDescription }
             busy = false
         }
+    }
+    func setUpMedia(store: LibraryStore) {
+        guard !mediaBusy, !busy else { return }
+        if mediaInstalled { mediaStatus = "GStreamer is already installed for all users."; return }
+        mediaBusy = true
+        Task {
+            do {
+                mediaStatus = "Downloading GStreamer from the GStreamer project. Nothing is installed yet."
+                let package = try await download(mediaURL, expected: mediaHash, root: store.root, base: 0, weight: 1)
+                mediaPackage = package
+                mediaStatus = "Download verified against the pinned publisher SHA-256. The installer is not Apple-signed, so macOS will ask you to review it. Choose Review and open installer only if you want media playback; install for all users there. Perasma does not bypass this check."
+            } catch { mediaStatus = error.localizedDescription }
+            mediaBusy = false
+        }
+    }
+    func openMediaInstaller() {
+        guard let package = mediaPackage else { return }
+        NSWorkspace.shared.open(package)
+        mediaStatus = "macOS Installer is open with the verified download. Review the package there; installing it is your choice. Perasma does not bypass the macOS check."
     }
     private func download(_ url: URL, expected: String, root: URL, base: Double, weight: Double) async throws -> URL {
         let directory = root.appendingPathComponent("Downloads", isDirectory: true)
@@ -124,19 +139,31 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
 
 struct RuntimeSetupView: View {
     @EnvironmentObject var store: LibraryStore
-    @StateObject private var setup = RuntimeSetup()
+    @ObservedObject var setup: RuntimeSetup
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Windows components").font(.headline)
-            Text("Wine with Mono and Gecko, plus GStreamer. One flow, direct publisher downloads. macOS may ask for license and system approval.").font(.callout).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack { Text(setup.component); Spacer(); Text("\(Int(setup.progress * 100))%").monospacedDigit() }
-                ProgressView(value: setup.progress).tint(.accentColor)
-                if setup.total > 0 { Text("\(ByteCountFormatter.string(fromByteCount: setup.transferred, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: setup.total, countStyle: .file))").font(.caption).foregroundStyle(.secondary) }
+            Text("Wine with Mono and Gecko, downloaded directly from its publisher. macOS may ask for system approval.").font(.callout).foregroundStyle(.secondary)
+            if setup.busy {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack { Text(setup.component); Spacer(); Text("\(Int(setup.progress * 100))%").monospacedDigit() }
+                    ProgressView(value: setup.progress).tint(.accentColor)
+                    if setup.total > 0 { Text("\(ByteCountFormatter.string(fromByteCount: setup.transferred, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: setup.total, countStyle: .file))").font(.caption).foregroundStyle(.secondary) }
+                }
             }
-            Button(setup.downloadedWine == nil ? "Download and set up components" : "Continue setup") { setup.setUpAll(store: store) }.buttonStyle(.glassProminent).disabled(setup.busy)
+            Button(setup.downloadedWine == nil ? "Download and set up components" : "Continue setup") { setup.setUpAll(store: store) }.buttonStyle(.glassProminent).disabled(setup.busy || setup.mediaBusy)
             Text(setup.status).font(.callout).textSelection(.enabled)
             if let bundle = setup.downloadedWine { Button("Review Wine in Finder") { NSWorkspace.shared.activateFileViewerSelecting([bundle]) } }
+            Divider()
+            Text("Media support (optional)").font(.subheadline)
+            if setup.mediaBusy {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: setup.progress).tint(.accentColor)
+                    if setup.total > 0 { Text("\(ByteCountFormatter.string(fromByteCount: setup.transferred, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: setup.total, countStyle: .file))").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            Button(setup.mediaPackage == nil ? "Download media support" : "Review and open installer") { if setup.mediaPackage == nil { setup.setUpMedia(store: store) } else { setup.openMediaInstaller() } }.disabled(setup.busy || setup.mediaBusy)
+            Text(setup.mediaStatus).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Downloads are checked against pinned publisher SHA-256 values. Gatekeeper is never bypassed. Extra graphics layers and Steam automation are still being developed; this is core setup, not support for every game.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Link("Wine source & license", destination: URL(string: "https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18")!)
