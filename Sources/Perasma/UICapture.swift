@@ -30,9 +30,12 @@ import PerasmaCore
         }
     }
     private static func capture(_ window: NSWindow, to url: URL) throws {
-        guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw NSError(domain: "Capture", code: 1) }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        guard let data = bitmap.representation(using: .png, properties: [:]) else { throw NSError(domain: "Capture", code: 2) }
-        try data.write(to: url)
+        window.displayIfNeeded()
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
+        try capture.run()
+        capture.waitUntilExit()
+        guard capture.terminationStatus == 0, let image = NSImage(contentsOf: url), image.size.width > 0 else { throw NSError(domain: "Capture", code: 3, userInfo: [NSLocalizedDescriptionKey: "WindowServer screenshot failed. Native GPU surfaces must be verified before release."]) }
     }
 }
