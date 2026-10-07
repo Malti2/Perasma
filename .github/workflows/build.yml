@@ -24,9 +24,9 @@ jobs:
       - name: Capture native interface
         run: |
           mkdir -p ui-capture
-          dist/Perasma.app/Contents/MacOS/Perasma --capture-ui "$PWD/ui-capture" > capture.log 2>&1 &
+          dist/Perasma.app/Contents/MacOS/Perasma --capture-ui "$PWD/ui-capture" --capture-downloads > capture.log 2>&1 &
           PID=$!
-          for ATTEMPT in $(seq 1 30); do
+          for ATTEMPT in $(seq 1 60); do
             kill -0 "$PID" 2>/dev/null || break
             sleep 1
           done
