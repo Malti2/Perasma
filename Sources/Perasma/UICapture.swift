@@ -9,6 +9,8 @@ import PerasmaCore
         started = true
         let destination = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
         do { try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true) } catch { exit(1) }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
         NSApp.appearance = NSAppearance(named: .darkAqua)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = LibraryStore(root: root)
@@ -34,6 +36,8 @@ import PerasmaCore
         }
     }
     private static func capture(_ window: NSWindow, to url: URL) throws {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
         window.displayIfNeeded()
         let capture = Process()
         capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
