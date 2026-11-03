@@ -30,8 +30,24 @@ struct PreferencesControls: View {
     @EnvironmentObject var store: LibraryStore
     var body: some View {
         Picker("Default library view", selection: $store.preferences.layout) { ForEach(LibraryLayout.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
+        Picker("Sort library by", selection: $store.preferences.sort) { ForEach(LibrarySort.allCases) { Text($0.rawValue).tag($0) } }
         Toggle("Show app details", isOn: $store.preferences.showInspector)
         Toggle("Ask before running Windows software", isOn: $store.preferences.confirmLaunch)
+    }
+}
+struct RuntimeStatusControls: View {
+    @EnvironmentObject var store: LibraryStore
+    var body: some View {
+        if store.preferences.runtimePath.isEmpty {
+            Text("No Wine runtime is set. Download it below, or choose an existing Wine executable you already installed.").font(.callout).foregroundStyle(.secondary)
+        } else {
+            LabeledContent("Current runtime", value: store.runtimeAvailable ? "Ready" : "Missing or not executable")
+            Text(store.preferences.runtimePath).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+        HStack {
+            Button("Choose existing Wine...") { store.chooseRuntime() }
+            if !store.preferences.runtimePath.isEmpty { Button("Clear runtime") { store.clearRuntime() } }
+        }
     }
 }
 struct SettingsView: View {
@@ -40,6 +56,8 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Library and safety") { PreferencesControls() }
+            Section("Wine runtime") { RuntimeStatusControls() }
+            Section("Environments") { EnvironmentsView() }
             Section("Download and setup") { RuntimeSetupView(setup: setup) }
             Section("Finder") { Text("Use Finder's Open With menu to select Perasma for .exe and .msi files. Change the default in Get Info only if you want to. Perasma never silently changes your associations.").font(.callout) }
             Section("Onboarding") { Button("Show onboarding again") { store.preferences.onboardingComplete = false; store.save() } }

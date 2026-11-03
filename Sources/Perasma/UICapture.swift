@@ -17,7 +17,7 @@ import PerasmaCore
         store.preferences.onboardingComplete = true
         let environment = WindowsEnvironment(name: "Example environment")
         store.library.environments = [environment]
-        store.library.apps = [WindowsApp(name: "Example editor", path: "/Example/editor.exe", category: .programs, environmentID: environment.id), WindowsApp(name: "Example game", path: "/Example/game.exe", category: .games, environmentID: environment.id)]
+        store.library.apps = [WindowsApp(name: "Example editor", path: "/Example/editor.exe", category: .programs, environmentID: environment.id), WindowsApp(name: "Example game", path: "/Example/game.exe", category: .games, environmentID: environment.id, lastOpened: Date(), favorite: true, launchArguments: "-windowed")]
         store.selectedID = store.library.apps.first?.id
         let library = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         library.title = "Perasma"; library.contentView = NSHostingView(rootView: LibraryView().environmentObject(store)); library.center(); library.makeKeyAndOrderFront(nil)
