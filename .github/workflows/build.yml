@@ -20,7 +20,7 @@ jobs:
           cp .build/release/Perasma dist/Perasma.app/Contents/MacOS/Perasma
           cp Info.plist dist/Perasma.app/Contents/Info.plist
           codesign --force --sign - dist/Perasma.app
-          ditto -c -k --sequesterRsrc --keepParent dist/Perasma.app dist/Perasma-0.2.0-macos.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/Perasma.app dist/Perasma-0.2.1-macos.zip
       - name: Capture native interface
         run: |
           mkdir -p ui-capture
@@ -42,5 +42,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Perasma-app
-          path: dist/Perasma-0.2.0-macos.zip
+          path: dist/Perasma-0.2.1-macos.zip
           retention-days: 1
