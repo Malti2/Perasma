@@ -83,11 +83,16 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
                 #endif
                 let executable = bundle.appendingPathComponent("Contents/Resources/wine/bin/wine")
                 guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw setupError("The Wine executable is missing.") }
+                // Apple's bundle assessment rejects this Wine build even after a manual approval (it is not
+                // notarized), so it cannot be the gate. Probe the executable the same way Perasma launches it:
+                // only a real execution block by macOS stops setup here.
+                let probe = try await command(executable.path, ["--version"])
+                let version = probe.output.split(separator: "\n").first.map(String.init) ?? ""
+                guard probe.code == 0, version.lowercased().contains("wine") else { throw setupError("macOS blocked the Wine executable from running (exit \(probe.code)). If Privacy & Security now lists Wine, allow it there and continue setup — that entry appears after a real launch attempt like this one. Perasma will not remove quarantine or bypass Gatekeeper. Probe output: \(probe.output)") }
                 let assessment = try await command("/usr/sbin/spctl", ["--assess", "--type", "execute", bundle.path])
-                guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS has not approved it yet. Open the Wine app once with the button below; if macOS blocks it, allow it in Privacy & Security — that entry only appears after this first open attempt, so it is not listed there yet. Then continue setup. Perasma will not remove quarantine or bypass Gatekeeper.") }
                 store.preferences.runtimePath = executable.path; store.save(); progress = 1
                 component = "Core setup complete"
-                status = "Wine, Mono and Gecko are ready. App compatibility still needs testing. Media still needs your installer review. Experimental graphics and Steam installer preparation are available below; game compatibility is not verified."
+                status = "\(version) runs on this Mac. Wine, Mono and Gecko are ready. App compatibility still needs testing. Media still needs your installer review. Experimental graphics and Steam installer preparation are available below; game compatibility is not verified." + (assessment.code == 0 ? "" : " Note: Apple's bundle check does not approve this Wine build because it is not notarized; that check stays informational only.")
             } catch { status = error.localizedDescription }
             busy = false
         }
