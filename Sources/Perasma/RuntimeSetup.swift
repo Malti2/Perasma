@@ -84,13 +84,19 @@ private final class ComponentDownload: NSObject, URLSessionDownloadDelegate, @un
                 let executable = bundle.appendingPathComponent("Contents/Resources/wine/bin/wine")
                 guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw setupError("The Wine executable is missing.") }
                 let assessment = try await command("/usr/sbin/spctl", ["--assess", "--type", "execute", bundle.path])
-                guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS did not approve the package. Review it in Finder and macOS Privacy & Security, then continue setup. Perasma will not remove quarantine or bypass Gatekeeper.") }
+                guard assessment.code == 0 else { throw setupError("Wine is downloaded and verified, but macOS has not approved it yet. Open the Wine app once with the button below; if macOS blocks it, allow it in Privacy & Security — that entry only appears after this first open attempt, so it is not listed there yet. Then continue setup. Perasma will not remove quarantine or bypass Gatekeeper.") }
                 store.preferences.runtimePath = executable.path; store.save(); progress = 1
                 component = "Core setup complete"
                 status = "Wine, Mono and Gecko are ready. App compatibility still needs testing. Media still needs your installer review. Experimental graphics and Steam installer preparation are available below; game compatibility is not verified."
             } catch { status = error.localizedDescription }
             busy = false
         }
+    }
+    // opening the bundle once is what makes macOS show its approval entry in Privacy & Security
+    func openDownloadedWine() {
+        guard let bundle = downloadedWine else { return }
+        NSWorkspace.shared.open(bundle)
+        status = "Wine was opened. If macOS blocked it, allow it under Privacy & Security (the entry appears there now), then press Continue setup."
     }
     func setUpMedia(store: LibraryStore) {
         guard !mediaBusy, !busy else { return }
@@ -257,7 +263,12 @@ struct RuntimeSetupView: View {
             }
             Button(setup.downloadedWine == nil ? "Download and set up components" : "Continue setup") { setup.setUpAll(store: store) }.buttonStyle(.glassProminent).disabled(setup.busy || setup.mediaBusy)
             Text(setup.status).font(.callout).textSelection(.enabled)
-            if let bundle = setup.downloadedWine { Button("Review Wine in Finder") { NSWorkspace.shared.activateFileViewerSelecting([bundle]) } }
+            if let bundle = setup.downloadedWine {
+                HStack {
+                    Button("Open Wine app to approve it") { setup.openDownloadedWine() }
+                    Button("Review Wine in Finder") { NSWorkspace.shared.activateFileViewerSelecting([bundle]) }
+                }
+            }
             Divider()
             Text("Media support (optional)").font(.subheadline)
             if setup.mediaBusy {
