@@ -2,7 +2,7 @@
 
 A native macOS library and launcher for Windows programs and games. Perasma manages Wine environments and routes `.exe` and `.msi` files opened from Finder into your library.
 
-## Early development (0.2.1)
+## Early development (0.2.2)
 
 The app is built with SwiftUI and AppKit, with system sidebars, inspectors, toolbar controls, search, settings and onboarding. App names stay prominent; an icon is shown only when a genuine image has been supplied. No monogram artwork is used.
 
@@ -21,7 +21,7 @@ The app is built with SwiftUI and AppKit, with system sidebars, inspectors, tool
 - The sidebar lists environments with their app counts
 
 ### Runtime
-- If macOS has not approved the downloaded Wine app yet, setup offers an "Open Wine app" button: the Privacy & Security approval entry only appears after that first open attempt
+- Setup verifies Wine by running the downloaded executable directly (`wine --version`), the same way apps are launched later. Apple's bundle assessment is shown as information only: this Wine build is not notarized, so that check fails even after a manual approval and cannot finish setup. Only a real execution block by macOS stops setup, and after such an attempt the approval entry genuinely appears in Privacy & Security
 - Download flow (below) or pick an existing Wine executable manually in Settings and clear it again
 - Launch uses a per-environment `WINEPREFIX` and only applies DLL overrides for environments that opted into a graphics backend
 
